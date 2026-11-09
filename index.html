@@ -1,0 +1,887 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Voy - Ciego de Ávila</title>
+    
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet-routing-machine@latest/dist/leaflet-routing-machine.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@latest/dist/leaflet-routing-machine.css" />
+
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+        body { background-color: #000000; color: #ffffff; overflow-x: hidden; }
+        .app-container { max-width: 480px; margin: 0 auto; position: relative; padding-bottom: 100px; }
+
+        /* --- CABECERA CLIENTE --- */
+        .header { display: flex; justify-content: space-between; align-items: center; padding: 20px 24px 10px 24px; position: sticky; top: 0; background-color: #000; z-index: 10; }
+        .header h1 { font-size: 28px; font-weight: 700; }
+        .search-btn { background-color: #1c1c1e; border: none; border-radius: 50%; width: 44px; height: 44px; display: flex; justify-content: center; align-items: center; color: white; }
+
+        /* --- APP CLIENTE --- */
+        #clientApp { display: block; }
+        .map-view { display: none; padding: 0 24px 20px 24px; }
+        .map-view.active { display: block; }
+        #realMap { height: 60vh; border-radius: 20px; border: 1px solid #333; z-index: 1; }
+        
+        .btn-gps { position: absolute; bottom: 40px; right: 40px; z-index: 500; background-color: #1c1c1e; color: #0a84ff; border: 1px solid #333; width: 50px; height: 50px; border-radius: 50%; display: flex; justify-content: center; align-items: center; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.5); }
+        .leaflet-layer, .leaflet-control-zoom-in, .leaflet-control-zoom-out, .leaflet-control-attribution { filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%); }
+        .leaflet-container { background: #1a1a1c; font-family: inherit; }
+        .leaflet-routing-container { display: none !important; }
+        
+        .route-info-panel { display: none; position: absolute; top: 20px; left: 24px; right: 24px; background-color: rgba(28, 28, 30, 0.95); padding: 15px; border-radius: 15px; z-index: 1000; border: 1px solid #0a84ff; text-align: center; }
+        .route-info-panel.show { display: block; }
+        .route-info-panel h4 { color: #0a84ff; font-size: 16px; margin-bottom: 5px; }
+        .route-info-panel p { font-size: 13px; color: #fff; margin-bottom: 10px; }
+        .btn-clear-route { background-color: #ff453a; color: #fff; border: none; padding: 8px 15px; border-radius: 20px; font-size: 12px; font-weight: bold; cursor: pointer; }
+
+        .list-view { display: none; }
+        .list-view.active { display: block; }
+        
+        .filters { display: flex; gap: 12px; padding: 0 24px 20px 24px; overflow-x: auto; scrollbar-width: none; }
+        .chip { background-color: transparent; border: 1px solid #333; color: #ccc; padding: 8px 16px; border-radius: 30px; font-size: 13px; font-weight: 500; white-space: nowrap; display: flex; align-items: center; gap: 6px; cursor: pointer; }
+        .chip.active { border-color: #fff; color: #fff; background-color: #1c1c1e; }
+
+        .cards-container { padding: 0 24px; display: flex; flex-direction: column; gap: 20px; }
+        .card { background-color: #1c1c1e; border-radius: 24px; height: 240px; position: relative; overflow: hidden; display: flex; align-items: flex-end; background: linear-gradient(to bottom, rgba(255,255,255,0.05), #1c1c1e); cursor: pointer; }
+        
+        .btn-fav { position: absolute; top: 15px; right: 15px; background: rgba(0,0,0,0.5); border: none; border-radius: 50%; width: 36px; height: 36px; display: flex; justify-content: center; align-items: center; cursor: pointer; z-index: 2; color: #fff; }
+        .btn-fav.active { color: #ff453a; }
+        .btn-fav svg { width: 20px; height: 20px; fill: transparent; stroke: currentColor; stroke-width: 2; }
+        .btn-fav.active svg { fill: currentColor; }
+
+        .card-info { background: rgba(28, 28, 30, 0.9); backdrop-filter: blur(15px); width: calc(100% - 24px); margin: 12px; padding: 14px 16px; border-radius: 18px; display: flex; flex-direction: column; gap: 10px; }
+        .card-top { display: flex; justify-content: space-between; align-items: flex-start; }
+        .place-details h3 { font-size: 16px; font-weight: 600; margin-bottom: 2px; }
+        .place-details p { color: #999; font-size: 12px; }
+        
+        .status-badge { padding: 6px 12px; border-radius: 20px; font-size: 11px; font-weight: 600; display: flex; align-items: center; gap: 6px; background-color: #2c2c2e; }
+        .dot { width: 8px; height: 8px; border-radius: 50%; }
+        .status-full .dot { background-color: #ff453a; } .status-full { color: #ff453a; }
+        .status-open .dot { background-color: #32d74b; } .status-open { color: #32d74b; }
+        .status-busy .dot { background-color: #ffd60a; } .status-busy { color: #ffd60a; }
+
+        .card-bottom { display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #333; padding-top: 10px; }
+        .vibe-badge { font-size: 13px; font-weight: 600; }
+        .btn-route { background-color: #0a84ff; color: #fff; border: none; padding: 6px 10px; border-radius: 10px; font-size: 11px; font-weight: bold; display: flex; align-items: center; gap: 4px; cursor: pointer; }
+
+        .bottom-nav { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); width: calc(100% - 48px); max-width: 432px; background-color: #1c1c1e; border-radius: 30px; display: flex; justify-content: space-around; align-items: center; padding: 10px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); z-index: 2000; }
+        .nav-item { color: #777; display: flex; justify-content: center; align-items: center; width: 46px; height: 46px; border-radius: 50%; cursor: pointer; }
+        .nav-item svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2; }
+        .nav-item.active { background-color: #ffd60a; color: #000; }
+
+        /* --- MODAL DETALLE --- */
+        .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); backdrop-filter: blur(4px); z-index: 2000; display: none; justify-content: center; align-items: flex-end; }
+        .modal-content { background-color: #1c1c1e; width: 100%; max-width: 480px; border-radius: 30px 30px 0 0; padding: 24px; transform: translateY(100%); transition: transform 0.3s ease; position: relative; max-height: 90vh; overflow-y: auto; }
+        .modal-overlay.show { display: flex; }
+        .modal-overlay.show .modal-content { transform: translateY(0); }
+        .drag-handle { width: 40px; height: 4px; background-color: #444; border-radius: 2px; margin: 0 auto 20px auto; }
+        .modal-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 15px; }
+        .modal-header h2 { font-size: 22px; }
+        .modal-header p { color: #999; font-size: 14px; margin-top: 4px; }
+        .btn-close { background-color: #2c2c2e; color: white; border: none; width: 32px; height: 32px; border-radius: 50%; font-size: 16px; cursor: pointer; }
+
+        .info-grid { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+        .info-box { background-color: #2c2c2e; padding: 12px; border-radius: 12px; flex: 1; min-width: 45%; }
+        .info-box span { display: block; color: #999; font-size: 11px; margin-bottom: 4px; }
+        .info-box strong { font-size: 14px; display: block; }
+
+        .vibe-section { margin-bottom: 20px; }
+        .vibe-title { font-size: 14px; color: #999; margin-bottom: 10px; font-weight: 600; }
+        .vibe-options { display: flex; gap: 8px; flex-wrap: wrap; }
+        .vibe-option { background-color: #2c2c2e; border: 1px solid #444; color: #fff; padding: 8px 12px; border-radius: 20px; font-size: 12px; cursor: pointer; }
+        .vibe-option.selected { background-color: #0a84ff; border-color: #0a84ff; font-weight: bold; }
+
+        .btn-primary { background-color: #ffd60a; color: #000; border: none; width: 100%; padding: 16px; border-radius: 16px; font-size: 16px; font-weight: 700; display: flex; justify-content: center; align-items: center; gap: 8px; cursor: pointer; margin-bottom: 10px; }
+        .btn-primary:disabled { background-color: #333; color: #777; cursor: not-allowed; }
+
+        /* --- PANELES AISLADOS --- */
+        .panel-view { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #000; z-index: 5000; overflow-y: auto; padding: 24px; }
+        .panel-view.active { display: block; }
+        
+        .panel-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        .panel-header h2 { color: #ffd60a; font-size: 22px; }
+        .btn-logout-panel { background-color: #ff453a; color: #fff; border: none; padding: 10px 15px; border-radius: 10px; font-weight: bold; font-size: 12px; cursor: pointer; }
+
+        .panel-map-container { height: 250px; border-radius: 20px; border: 1px solid #333; margin-bottom: 20px; z-index: 1; position: relative; }
+        #adminMap, #ownerMap { height: 100%; width: 100%; border-radius: 20px; }
+        
+        .panel-map-actions { position: absolute; bottom: 15px; left: 15px; right: 15px; display: flex; justify-content: space-between; z-index: 500; pointer-events: none; }
+        .btn-panel-action { background-color: #1c1c1e; color: #fff; border: 1px solid #333; padding: 10px 15px; border-radius: 20px; font-weight: bold; font-size: 12px; cursor: pointer; display: flex; align-items: center; gap: 5px; box-shadow: 0 4px 10px rgba(0,0,0,0.5); pointer-events: auto; }
+        .btn-panel-gps { color: #0a84ff; }
+        .btn-panel-fix { background-color: #ffd60a; color: #000; border: none; }
+        .btn-panel-fix.active { background-color: #ff453a; color: #fff; }
+
+        .panel-form-box { background-color: #1c1c1e; padding: 20px; border-radius: 20px; border: 1px solid #333; margin-bottom: 20px; }
+        .panel-form-box h3 { font-size: 16px; color: #fff; margin-bottom: 15px; }
+        
+        .edit-group { margin-bottom: 15px; }
+        .edit-group label { display: block; color: #999; font-size: 12px; margin-bottom: 5px; }
+        .edit-group select, .edit-group input { width: 100%; padding: 12px; border-radius: 10px; border: 1px solid #444; background-color: #000; color: #fff; font-size: 14px; }
+        .btn-create { background-color: #0a84ff; color: #fff; border: none; width: 100%; padding: 14px; border-radius: 12px; font-weight: bold; font-size: 14px; cursor: pointer; margin-top: 10px; }
+
+        .panel-users-list { background-color: #1c1c1e; padding: 20px; border-radius: 20px; border: 1px solid #333; }
+        .panel-user-card { background-color: #000; padding: 15px; border-radius: 12px; margin-bottom: 10px; border: 1px solid #333; }
+        .panel-user-info h4 { font-size: 14px; color: #fff; margin-bottom: 3px; }
+        .panel-user-info p { font-size: 12px; color: #999; }
+        .panel-user-info span { font-size: 11px; color: #0a84ff; display: block; margin-top: 5px; }
+
+        /* --- MODAL PERFIL / LOGIN --- */
+        .profile-modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); z-index: 6000; display: none; justify-content: center; align-items: center; flex-direction: column; }
+        .profile-modal.show { display: flex; }
+        .profile-box { background-color: #1c1c1e; padding: 30px; border-radius: 24px; text-align: center; width: 90%; max-width: 320px; border: 1px solid #333; }
+        .profile-box h3 { margin-bottom: 5px; }
+        .profile-box p { color: #999; font-size: 14px; margin-bottom: 25px; }
+        .btn-owner-login { background-color: #2c2c2e; color: #fff; border: 1px solid #444; width: 100%; padding: 15px; border-radius: 12px; font-weight: bold; font-size: 14px; cursor: pointer; margin-bottom: 15px; display: flex; justify-content: center; align-items: center; gap: 8px; }
+        
+        .pin-form { display: none; margin-top: 15px; }
+        .pin-form.show { display: block; }
+        .pin-input { width: 100%; padding: 16px; font-size: 16px; text-align: center; background-color: #000; border: 1px solid #444; color: #fff; border-radius: 12px; margin-bottom: 15px; }
+        .pin-input:focus { outline: none; border-color: #ffd60a; }
+        .btn-pin { background-color: #ffd60a; color: #000; border: none; width: 100%; padding: 16px; border-radius: 12px; font-weight: 700; font-size: 16px; cursor: pointer; }
+        .btn-cancel { background: none; border: none; color: #999; font-size: 14px; cursor: pointer; text-decoration: underline; margin-top: 15px; }
+
+        /* --- TOAST --- */
+        .toast { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background-color: #32d74b; color: #000; padding: 12px 24px; border-radius: 20px; font-weight: bold; font-size: 14px; z-index: 7000; opacity: 0; transition: opacity 0.3s; pointer-events: none; }
+        .toast.show { opacity: 1; }
+    </style>
+</head>
+<body>
+
+    <!-- ==============================================
+         1. VISTA CLIENTE
+         ============================================== -->
+    <div class="app-container" id="clientApp">
+        
+        <header class="header">
+            <h1 id="appTitle">Voy</h1>
+            <div class="header-buttons">
+                <button class="search-btn" onclick="openProfileModal()">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                </button>
+            </div>
+        </header>
+
+        <div class="map-view" id="view-map">
+            <div class="route-info-panel" id="routeInfoPanel">
+                <h4>Ruta calculada</h4>
+                <p id="routeDetails">Calculando...</p>
+                <button class="btn-clear-route" onclick="clearRoute()">Borrar ruta</button>
+            </div>
+            <div id="realMap"></div>
+            <button class="btn-gps" onclick="goToMyLocation()">
+                <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"></circle><path d="M12 2v3m0 14v3m10-10h-3M5 12H2"></path><path d="M12 2a10 10 0 0 0 0 20 10 10 0 0 0 0-20z" stroke-dasharray="2 4"></path></svg>
+            </button>
+        </div>
+
+        <div class="list-view active" id="view-home">
+            <div class="filters">
+                <div class="chip active" onclick="filterHomeCards('all')">Todos</div>
+                <div class="chip" onclick="filterHomeCards('open')"><span>🟢</span> Con espacio</div>
+            </div>
+            <div class="cards-container" id="cards-home"></div>
+        </div>
+
+        <div class="list-view" id="view-vibe">
+            <div class="cards-container" id="cards-vibe"></div>
+        </div>
+
+        <div class="list-view" id="view-fav">
+            <div class="cards-container" id="cards-fav"></div>
+        </div>
+
+        <nav class="bottom-nav" id="clientNav">
+            <div class="nav-item active" id="nav-home" onclick="switchTab('home')">
+                <svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path></svg>
+            </div>
+            <div class="nav-item" id="nav-map" onclick="switchTab('map')">
+                <svg viewBox="0 0 24 24"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"></polygon></svg>
+            </div>
+            <div class="nav-item" id="nav-star" onclick="switchTab('vibe')">
+                <svg viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path></svg>
+            </div>
+            <div class="nav-item" id="nav-fav" onclick="switchTab('fav')">
+                <svg viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg>
+            </div>
+            <div class="nav-item" id="nav-profile" onclick="openProfileModal()">
+                <svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+            </div>
+        </nav>
+    </div>
+
+    <!-- ==============================================
+         2. VISTA SÚPER ADMIN
+         ============================================== -->
+    <div class="panel-view" id="adminApp">
+        <div class="panel-header">
+            <h2>Súper Admin</h2>
+            <button class="btn-logout-panel" onclick="logoutPanel('admin')">Cerrar Sesión</button>
+        </div>
+
+        <div class="panel-map-container">
+            <div id="adminMap"></div>
+            <div class="panel-map-actions">
+                <button class="btn-panel-action btn-panel-gps" onclick="panelGPS('admin')">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M12 2v3m0 14v3m10-10h-3M5 12H2"></path><path d="M12 2a10 10 0 0 0 0 20 10 10 0 0 0 0-20z" stroke-dasharray="2 4"></path></svg>
+                    Mi ubicación
+                </button>
+                <button class="btn-panel-action btn-panel-fix" id="btnFixAdmin" onclick="togglePanelFixMode('admin')">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg> Fijar Bar
+                </button>
+            </div>
+        </div>
+
+        <div class="panel-form-box">
+            <h3>➕ Registrar Nuevo Bar / Dueño</h3>
+            <div class="edit-group"><label>Nombre del Establecimiento</label><input type="text" id="adminNewPlaceName" placeholder="Ej: Bar El Rincón"></div>
+            <div class="edit-group"><label>Usuario (Email)</label><input type="text" id="adminNewUserEmail" placeholder="dueño@bar.com"></div>
+            <div class="edit-group"><label>Contraseña</label><input type="text" id="adminNewUserPass" placeholder="Contraseña segura"></div>
+            <div class="edit-group"><label>Ubicación (Fijada en mapa)</label><input type="text" id="adminNewCoords" placeholder="Toca 'Fijar Bar' arriba..." readonly style="color: #0a84ff; font-weight: bold;"></div>
+            <button class="btn-create" onclick="createNewBarAdmin()">Guardar Bar y Cuenta</button>
+        </div>
+
+        <div class="panel-users-list">
+            <h3 style="font-size: 16px; color: #999; margin-bottom: 15px;">Cuentas Activas</h3>
+            <div id="adminUsersContainer"></div>
+        </div>
+    </div>
+
+    <!-- ==========================================
+         3. VISTA DUEÑO
+         ========================================== -->
+    <div class="panel-view" id="ownerApp">
+        <div class="panel-header">
+            <h2 id="ownerPanelTitle">Mi Bar</h2>
+            <button class="btn-logout-panel" onclick="logoutPanel('owner')">Cerrar Sesión</button>
+        </div>
+
+        <div class="panel-map-container">
+            <div id="ownerMap"></div>
+            <div class="panel-map-actions">
+                <button class="btn-panel-action btn-panel-gps" onclick="panelGPS('owner')">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M12 2v3m0 14v3m10-10h-3M5 12H2"></path><path d="M12 2a10 10 0 0 0 0 20 10 10 0 0 0 0-20z" stroke-dasharray="2 4"></path></svg>
+                    Mi ubicación
+                </button>
+                <button class="btn-panel-action btn-panel-fix" id="btnFixOwner" onclick="togglePanelFixMode('owner')">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg> Fijar mi Bar
+                </button>
+            </div>
+        </div>
+
+        <div class="panel-form-box">
+            <h3>📝 Información de mi Bar</h3>
+            
+            <div class="edit-group">
+                <label>Nombre del Bar</label>
+                <input type="text" id="ownerPlaceName" placeholder="Nombre de tu bar" readonly style="background-color: #222; color: #999;">
+            </div>
+            
+            <div class="edit-group">
+                <label>Estado del Aforo</label>
+                <select id="ownerStatus">
+                    <option value="verde">🟢 Hay espacio</option>
+                    <option value="amarillo">🟡 Casi lleno</option>
+                    <option value="rojo">🔴 Aforo completo</option>
+                </select>
+            </div>
+            
+            <div class="edit-group">
+                <label>Ambiente Actual</label>
+                <select id="ownerVibe">
+                    <option value="🚶 Vacío / Tranquilo">🚶 Vacío / Tranquilo</option>
+                    <option value="🔥 Buen ambiente">🔥 Buen ambiente</option>
+                    <option value="💃 Fiesta / Lleno">💃 Fiesta / Lleno</option>
+                </select>
+            </div>
+            
+            <div class="edit-group"><label>Capacidad Máxima</label><input type="number" id="ownerCapacity"></div>
+            <div class="edit-group"><label>Personas Actuales</label><input type="number" id="ownerCurrentPeople"></div>
+            <div class="edit-group"><label>Hora de Apertura</label><input type="time" id="ownerOpenTime"></div>
+            <div class="edit-group"><label>Hora de Cierre</label><input type="time" id="ownerCloseTime"></div>
+            
+            <button class="btn-create" style="background-color: #ffd60a; color: #000;" onclick="saveOwnerPanelChanges()">💾 Guardar Cambios</button>
+        </div>
+    </div>
+
+    <!-- MODAL DETALLE CLIENTE -->
+    <div class="modal-overlay" id="detailModal" onclick="closeModal(event)">
+        <div class="modal-content" onclick="event.stopPropagation()">
+            <div class="drag-handle"></div>
+            <div class="modal-header">
+                <div><h2 id="modalTitle">Nombre</h2><p id="modalType">Categoría</p></div>
+                <button class="btn-close" onclick="closeModal(event)">✕</button>
+            </div>
+
+            <div id="viewModeClient">
+                <div class="info-grid">
+                    <div class="info-box"><span>Estado actual</span><strong id="viewStatus">Abierto</strong></div>
+                    <div class="info-box"><span>Ambiente</span><strong id="viewVibe">Buen ambiente</strong></div>
+                </div>
+                <div class="info-grid">
+                    <div class="info-box"><span>Abre a las</span><strong id="viewOpenTime">08:00 PM</strong></div>
+                    <div class="info-box"><span>Cierra a las</span><strong id="viewCloseTime">03:00 AM</strong></div>
+                    <div class="info-box"><span>Capacidad</span><strong id="viewCapacity">100 pers.</strong></div>
+                </div>
+                <div class="vibe-section">
+                    <div class="vibe-title">¿Cómo está el ambiente ahora?</div>
+                    <div class="vibe-options">
+                        <div class="vibe-option" onclick="reportVibe(this)">🚶 Vacío</div>
+                        <div class="vibe-option" onclick="reportVibe(this)">🔥 Buen ambiente</div>
+                        <div class="vibe-option" onclick="reportVibe(this)">💃 Fiesta</div>
+                    </div>
+                </div>
+                <button class="btn-primary" id="actionButton" onclick="irParaAllaApp()">
+                    <svg style="width: 20px; height: 20px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="3 11 22 2 13 21 11 13 3 11"></polygon></svg>
+                    <span>Trazar ruta en el mapa</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL PERFIL / LOGIN -->
+    <div class="profile-modal" id="profileModal">
+        <div class="profile-box">
+            <h3>Mi Perfil</h3>
+            <p>Configuración de usuario</p>
+            <button class="btn-owner-login" id="btnShowPin" onclick="showPinForm()">🔐 Acceso Dueño / Admin</button>
+            <div class="pin-form" id="pinForm">
+                <input type="text" id="pinInput" class="pin-input" placeholder="Usuario o PIN">
+                <button class="btn-pin" onclick="verifyLogin()">Desbloquear</button>
+            </div>
+            <button class="btn-cancel" onclick="closeProfileModal()">Cerrar</button>
+        </div>
+    </div>
+
+    <div class="toast" id="toast">¡Listo!</div>
+
+    <script>
+        // ==========================================
+        // 1. DATOS
+        // ==========================================
+        let placesData = [
+            { id: 'arcade', name: 'Arcade Retro', type: 'Recreativos · A 1.2km', status: 'verde', statusText: 'Hay espacio', vibe: '🔥 Buen ambiente', openTime: '20:00', closeTime: '02:00', maxCapacity: 100, currentPeople: 45, isFav: false, lat: 21.8500, lng: -78.7650 },
+            { id: 'noche', name: 'Bar La Noche', type: 'Discoteca · A 2.5km', status: 'rojo', statusText: 'Lleno', vibe: '💃 Fiesta / Lleno', openTime: '22:00', closeTime: '05:00', maxCapacity: 150, currentPeople: 150, isFav: false, lat: 21.8300, lng: -78.7580 }
+        ];
+
+        let ownersDatabase = [
+            { placeName: "Arcade Retro", email: "arcade", password: "123", id: "arcade", lat: 21.8500, lng: -78.7650 }
+        ];
+
+        let currentRole = 'client'; 
+        let currentUserOwnerId = null; 
+        let currentEditId = null;
+        let markers = {}; 
+        let userLocation = null;
+        let routingControl = null;
+
+        // Variables de los mapas de los paneles
+        let adminMap, ownerMap;
+        let adminSelectedLat, adminSelectedLng, adminTempMarker;
+        let ownerSelectedLat, ownerSelectedLng, ownerTempMarker;
+        let isPanelFixMode = { admin: false, owner: false };
+
+        // Mapa Cliente
+        var map = L.map('realMap', { zoomControl: false }).setView([21.8405, -78.7619], 13); 
+        L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(map);
+
+        function createPin(color) {
+            return L.divIcon({
+                className: 'custom-pin',
+                html: `<div style="background-color: ${color}; width: 18px; height: 18px; border-radius: 50%; border: 3px solid #000; box-shadow: 0 0 10px rgba(0,0,0,0.8);"></div>`,
+                iconSize: [18, 18], iconAnchor: [9, 9]
+            });
+        }
+        function getColor(status) {
+            return status === 'verde' ? '#32d74b' : (status === 'amarillo' ? '#ffd60a' : '#ff453a');
+        }
+
+        // ==========================================
+        // 2. RENDERIZAR VISTAS CLIENTE
+        // ==========================================
+        function generateCardHTML(place) {
+            const favIcon = place.isFav ? 'active' : '';
+            return `
+                <div class="card" onclick="openModal('${place.id}')">
+                    <button class="btn-fav ${favIcon}" onclick="toggleFav(event, '${place.id}')">
+                        <svg viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg>
+                    </button>
+                    <div class="card-info">
+                        <div class="card-top">
+                            <div class="place-details"><h3>${place.name}</h3><p>${place.type}</p></div>
+                            <div class="status-badge status-${place.status === 'verde' ? 'open' : (place.status === 'amarillo' ? 'busy' : 'full')}">
+                                <span class="dot"></span> ${place.statusText}
+                            </div>
+                        </div>
+                        <div class="card-bottom">
+                            <span class="vibe-badge">${place.vibe}</span>
+                            <button class="btn-route" onclick="trazarRutaDesdeTarjeta(event, ${place.lat}, ${place.lng})">
+                                <svg viewBox="0 0 24 24"><polygon points="3 11 22 2 13 21 11 13 3 11"></polygon></svg> Ir
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderHomeCards(filter = 'all') {
+            const container = document.getElementById('cards-home');
+            container.innerHTML = '';
+            let filtered = placesData;
+            if (filter === 'open') filtered = placesData.filter(p => p.status !== 'rojo');
+            if (filtered.length === 0) container.innerHTML = '<p style="color:#999; text-align:center; margin-top:20px;">No hay lugares disponibles.</p>';
+            filtered.forEach(place => container.insertAdjacentHTML('beforeend', generateCardHTML(place)));
+        }
+        function renderVibeCards() {
+            const container = document.getElementById('cards-vibe');
+            container.innerHTML = '';
+            const filtered = placesData.filter(p => p.vibe.includes('Buen ambiente') || p.vibe.includes('Fiesta'));
+            if (filtered.length === 0) container.innerHTML = '<p style="color:#999; text-align:center; margin-top:20px;">No hay sitios con buen ambiente.</p>';
+            filtered.forEach(place => container.insertAdjacentHTML('beforeend', generateCardHTML(place)));
+        }
+        function renderFavCards() {
+            const container = document.getElementById('cards-fav');
+            container.innerHTML = '';
+            const filtered = placesData.filter(p => p.isFav);
+            if (filtered.length === 0) container.innerHTML = '<p style="color:#999; text-align:center; margin-top:20px;">Aún no has guardado lugares.</p>';
+            filtered.forEach(place => container.insertAdjacentHTML('beforeend', generateCardHTML(place)));
+        }
+        function renderAllCards() { renderHomeCards(); renderVibeCards(); renderFavCards(); }
+
+        function updateClientMap() {
+            Object.values(markers).forEach(m => map.removeLayer(m));
+            markers = {};
+            placesData.forEach(place => {
+                const marker = L.marker([place.lat, place.lng], {icon: createPin(getColor(place.status))}).addTo(map);
+                marker.on('click', () => openModal(place.id));
+                markers[place.id] = marker;
+            });
+        }
+
+        // ==========================================
+        // 3. NAVEGACIÓN CLIENTE
+        // ==========================================
+        function switchTab(tab) {
+            document.querySelectorAll('.list-view, .map-view').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+
+            if (tab === 'home') {
+                document.getElementById('view-home').classList.add('active');
+                document.getElementById('nav-home').classList.add('active');
+            } 
+            else if (tab === 'map') {
+                document.getElementById('view-map').classList.add('active');
+                document.getElementById('nav-map').classList.add('active');
+                updateClientMap();
+                setTimeout(() => { map.invalidateSize(); }, 300); 
+            } 
+            else if (tab === 'vibe') {
+                document.getElementById('view-vibe').classList.add('active');
+                document.getElementById('nav-star').classList.add('active');
+            } 
+            else if (tab === 'fav') {
+                document.getElementById('view-fav').classList.add('active');
+                document.getElementById('nav-fav').classList.add('active');
+            }
+        }
+
+        function filterHomeCards(type) {
+            document.querySelectorAll('.filters .chip').forEach(c => c.classList.remove('active'));
+            event.target.closest('.chip').classList.add('active');
+            renderHomeCards(type);
+        }
+
+        function toggleFav(event, id) {
+            event.stopPropagation();
+            const place = placesData.find(p => p.id === id);
+            place.isFav = !place.isFav;
+            showToast(place.isFav ? '❤️ Añadido a favoritos' : 'Eliminado');
+            renderAllCards();
+        }
+
+        function openModal(id) {
+            currentEditId = id;
+            const data = placesData.find(p => p.id === id);
+            document.getElementById('modalTitle').innerText = data.name;
+            document.getElementById('modalType').innerText = data.type;
+            document.getElementById('viewStatus').innerText = data.statusText;
+            document.getElementById('viewStatus').style.color = getColor(data.status);
+            document.getElementById('viewVibe').innerText = data.vibe;
+            document.getElementById('viewOpenTime').innerText = formatTime(data.openTime);
+            document.getElementById('viewCloseTime').innerText = formatTime(data.closeTime);
+            document.getElementById('viewCapacity').innerText = `${data.currentPeople} / ${data.maxCapacity} pers.`;
+
+            const btn = document.getElementById('actionButton');
+            if (data.status === 'rojo') {
+                btn.style.backgroundColor = '#333'; btn.style.color = '#777';
+                btn.disabled = true;
+                btn.querySelector('span').innerText = 'Está lleno';
+            } else {
+                btn.style.backgroundColor = '#ffd60a'; btn.style.color = '#000';
+                btn.disabled = false;
+                btn.querySelector('span').innerText = 'Trazar ruta en el mapa';
+            }
+            document.getElementById('detailModal').classList.add('show');
+        }
+
+        function closeModal(event) {
+            if (event.target.id === 'detailModal' || event.target.className === 'btn-close') {
+                document.getElementById('detailModal').classList.remove('show');
+            }
+        }
+
+        // ==========================================
+        // 4. LOGIN Y ROLES
+        // ==========================================
+        function openProfileModal() {
+            document.getElementById('profileModal').classList.add('show');
+            document.getElementById('btnShowPin').innerText = "🔐 Acceso Dueño / Admin";
+            document.getElementById('pinForm').classList.remove('show');
+        }
+
+        function closeProfileModal() {
+            document.getElementById('profileModal').classList.remove('show');
+            document.getElementById('pinForm').classList.remove('show');
+        }
+
+        function showPinForm() {
+            document.getElementById('pinForm').classList.add('show');
+            document.getElementById('btnShowPin').style.display = 'none';
+        }
+
+        function verifyLogin() {
+            const input = document.getElementById('pinInput').value;
+
+            // 1. SÚPER ADMIN
+            if (input === "admin123") {
+                document.getElementById('pinInput').value = '';
+                closeProfileModal();
+                
+                document.getElementById('clientApp').style.display = 'none';
+                document.getElementById('adminApp').classList.add('active');
+                
+                showToast('🔓 Súper Admin Activado');
+                
+                setTimeout(initAdminMap, 100);
+                renderAdminUsers();
+                return;
+            }
+
+            // 2. DUEÑO
+            const owner = ownersDatabase.find(o => o.email === input || o.password === input);
+            if (owner) {
+                currentRole = 'owner';
+                currentUserOwnerId = owner.id;
+                document.getElementById('pinInput').value = '';
+                closeProfileModal();
+                
+                document.getElementById('clientApp').style.display = 'none';
+                document.getElementById('ownerApp').classList.add('active');
+                
+                document.getElementById('ownerPanelTitle').innerText = `Panel: ${owner.placeName}`;
+                
+                // Cargar los datos actuales del bar en el formulario
+                const place = placesData.find(p => p.id === owner.id);
+                if (place) {
+                    document.getElementById('ownerPlaceName').value = place.name;
+                    document.getElementById('ownerStatus').value = place.status;
+                    document.getElementById('ownerVibe').value = place.vibe;
+                    document.getElementById('ownerCapacity').value = place.maxCapacity;
+                    document.getElementById('ownerCurrentPeople').value = place.currentPeople;
+                    document.getElementById('ownerOpenTime').value = place.openTime;
+                    document.getElementById('ownerCloseTime').value = place.closeTime;
+                    ownerSelectedLat = place.lat;
+                    ownerSelectedLng = place.lng;
+                }
+
+                showToast(`🔓 Bienvenido, dueño de ${owner.placeName}`);
+                setTimeout(initOwnerMap, 100);
+                return;
+            }
+
+            showToast('PIN o Usuario Incorrecto');
+        }
+
+        function logoutPanel(role) {
+            if (role === 'admin') {
+                document.getElementById('adminApp').classList.remove('active');
+            } else {
+                document.getElementById('ownerApp').classList.remove('active');
+            }
+            document.getElementById('clientApp').style.display = 'block';
+            currentRole = 'client';
+            currentUserOwnerId = null;
+            showToast('Sesión cerrada');
+        }
+
+        // ==========================================
+        // 5. LÓGICA PANEL ADMIN
+        // ==========================================
+        function initAdminMap() {
+            if (adminMap) { adminMap.invalidateSize(); return; }
+            adminMap = L.map('adminMap', { zoomControl: true }).setView([21.8405, -78.7619], 13); 
+            L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(adminMap);
+
+            adminMap.on('click', function(e) {
+                if (isPanelFixMode.admin) {
+                    adminSelectedLat = e.latlng.lat;
+                    adminSelectedLng = e.latlng.lng;
+                    document.getElementById('adminNewCoords').value = `${adminSelectedLat.toFixed(5)}, ${adminSelectedLng.toFixed(5)}`;
+                    
+                    if (adminTempMarker) { adminMap.removeLayer(adminTempMarker); }
+                    adminTempMarker = L.marker([adminSelectedLat, adminSelectedLng], {icon: createPin('#ffd60a')}).addTo(adminMap);
+
+                    // AQUÍ ESTÁ LA MAGIA: Pedir el nombre del bar al fijar
+                    const nombre = prompt("📍 Has fijado la ubicación.\n¿Cuál es el nombre del establecimiento?");
+                    if (nombre) {
+                        document.getElementById('adminNewPlaceName').value = nombre;
+                    }
+
+                    showToast('Ubicación fijada');
+                    togglePanelFixMode('admin');
+                }
+            });
+        }
+
+        function togglePanelFixMode(role) {
+            isPanelFixMode[role] = !isPanelFixMode[role];
+            const btn = role === 'admin' ? document.getElementById('btnFixAdmin') : document.getElementById('btnFixOwner');
+            
+            if (isPanelFixMode[role]) {
+                btn.classList.add('active');
+                btn.innerHTML = '❌ Cancelar';
+                showToast('Toca el mapa para fijar el bar');
+            } else {
+                btn.classList.remove('active');
+                btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg> Fijar Bar`;
+            }
+        }
+
+        function renderAdminUsers() {
+            const container = document.getElementById('adminUsersContainer');
+            container.innerHTML = '';
+            ownersDatabase.forEach(owner => {
+                const card = `
+                    <div class="panel-user-card">
+                        <div class="panel-user-info">
+                            <h4>${owner.placeName}</h4>
+                            <p>User: ${owner.email} | Pass: ${owner.password}</p>
+                            <span>📍 ${owner.lat ? owner.lat.toFixed(4) : 'Sin ubicación'}, ${owner.lng ? owner.lng.toFixed(4) : ''}</span>
+                        </div>
+                    </div>
+                `;
+                container.insertAdjacentHTML('beforeend', card);
+            });
+        }
+
+        function createNewBarAdmin() {
+            const placeName = document.getElementById('adminNewPlaceName').value;
+            const email = document.getElementById('adminNewUserEmail').value;
+            const password = document.getElementById('adminNewUserPass').value;
+
+            if (!placeName || !email || !password) { showToast('Llena todos los campos'); return; }
+            if (!adminSelectedLat || !adminSelectedLng) { showToast('⚠️ Fija el bar en el mapa primero'); return; }
+
+            const newId = 'nuevo_' + Date.now();
+            
+            ownersDatabase.push({ placeName, email, password, id: newId, lat: adminSelectedLat, lng: adminSelectedLng });
+            
+            placesData.push({
+                id: newId, name: placeName, type: 'Nuevo Lugar · Cerca',
+                status: 'verde', statusText: 'Hay espacio', vibe: '🔥 Buen ambiente',
+                openTime: '20:00', closeTime: '02:00', maxCapacity: 100, currentPeople: 0,
+                isFav: false, lat: adminSelectedLat, lng: adminSelectedLng
+            });
+
+            document.getElementById('adminNewPlaceName').value = '';
+            document.getElementById('adminNewUserEmail').value = '';
+            document.getElementById('adminNewUserPass').value = '';
+            document.getElementById('adminNewCoords').value = '';
+            if (adminTempMarker) { adminMap.removeLayer(adminTempMarker); adminTempMarker = null; }
+            adminSelectedLat = null; adminSelectedLng = null;
+
+            renderAdminUsers();
+            renderAllCards();
+            updateClientMap();
+            showToast(`¡${placeName} creado con éxito!`);
+        }
+
+        // ==========================================
+        // 6. LÓGICA PANEL DUEÑO
+        // ==========================================
+        function initOwnerMap() {
+            if (ownerMap) { ownerMap.invalidateSize(); return; }
+            ownerMap = L.map('ownerMap', { zoomControl: true }).setView([ownerSelectedLat || 21.8405, ownerSelectedLng || -78.7619], 15); 
+            L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(ownerMap);
+
+            // Si ya tiene ubicación, poner un pin
+            if (ownerSelectedLat && ownerSelectedLng) {
+                ownerTempMarker = L.marker([ownerSelectedLat, ownerSelectedLng], {icon: createPin('#ffd60a')}).addTo(ownerMap);
+            }
+
+            ownerMap.on('click', function(e) {
+                if (isPanelFixMode.owner) {
+                    ownerSelectedLat = e.latlng.lat;
+                    ownerSelectedLng = e.latlng.lng;
+                    
+                    if (ownerTempMarker) { ownerMap.removeLayer(ownerTempMarker); }
+                    ownerTempMarker = L.marker([ownerSelectedLat, ownerSelectedLng], {icon: createPin('#ffd60a')}).addTo(ownerMap);
+
+                    // Pedir confirmación al dueño al fijar su bar
+                    const nombre = prompt("📍 Has fijado tu bar en este punto.\n¿Deseas guardar esta ubicación? (Escribe el nombre de tu bar para confirmar)");
+                    if (nombre) {
+                        document.getElementById('ownerPlaceName').value = nombre;
+                    }
+
+                    showToast('Ubicación fijada');
+                    togglePanelFixMode('owner');
+                }
+            });
+        }
+
+        function saveOwnerPanelChanges() {
+            if (!currentUserOwnerId) return;
+            
+            const place = placesData.find(p => p.id === currentUserOwnerId);
+            if (!place) return;
+
+            place.name = document.getElementById('ownerPlaceName').value;
+            place.status = document.getElementById('ownerStatus').value;
+            place.vibe = document.getElementById('ownerVibe').value;
+            place.maxCapacity = parseInt(document.getElementById('ownerCapacity').value) || 100;
+            place.currentPeople = parseInt(document.getElementById('ownerCurrentPeople').value) || 0;
+            place.openTime = document.getElementById('ownerOpenTime').value;
+            place.closeTime = document.getElementById('ownerCloseTime').value;
+            
+            if (ownerSelectedLat && ownerSelectedLng) {
+                place.lat = ownerSelectedLat;
+                place.lng = ownerSelectedLng;
+            }
+
+            if (place.status === 'verde') place.statusText = 'Hay espacio';
+            else if (place.status === 'amarillo') place.statusText = 'Casi lleno';
+            else place.statusText = 'Lleno';
+
+            renderAllCards();
+            updateClientMap();
+            showToast('¡Tu bar ha sido actualizado en la app!');
+        }
+
+        // ==========================================
+        // 7. GPS Y UTILIDADES
+        // ==========================================
+        function panelGPS(role) {
+            if (!navigator.geolocation) { showToast('GPS no soportado'); return; }
+            showToast('Buscando tu ubicación...');
+            
+            navigator.geolocation.getCurrentPosition(
+                function(position) {
+                    const lat = position.coords.latitude;
+                    const lng = position.coords.longitude;
+                    
+                    const targetMap = role === 'admin' ? adminMap : ownerMap;
+                    
+                    if (targetMap) {
+                        targetMap.flyTo([lat, lng], 17, { animate: true, duration: 1.5 });
+                        showToast('📍 Ubicación encontrada. Toca "Fijar Bar" para registrar aquí.');
+                    }
+                },
+                function(error) { showToast('Error: Activa el GPS de tu teléfono'); },
+                { enableHighAccuracy: true }
+            );
+        }
+
+        function goToMyLocation() {
+            if (!navigator.geolocation) { showToast('GPS no soportado'); return; }
+            navigator.geolocation.getCurrentPosition(
+                function(position) {
+                    userLocation = { lat: position.coords.latitude, lng: position.coords.longitude };
+                    map.flyTo([userLocation.lat, userLocation.lng], 16, { animate: true, duration: 1.5 });
+                    showToast('📍 Ubicación encontrada');
+                },
+                function(error) { showToast('Error: Activa el GPS'); },
+                { enableHighAccuracy: true }
+            );
+        }
+
+        function irParaAllaApp() {
+            const place = placesData.find(p => p.id === currentEditId);
+            closeModal({ target: { id: 'detailModal' } });
+            switchTab('map');
+            setTimeout(() => { trazarRutaLeaflet(place.lat, place.lng, place.name); }, 400);
+        }
+
+        function trazarRutaDesdeTarjeta(event, lat, lng) {
+            event.stopPropagation();
+            switchTab('map');
+            setTimeout(() => { trazarRutaLeaflet(lat, lng, "Destino"); }, 400);
+        }
+
+        function trazarRutaLeaflet(destLat, destLng, destName) {
+            if (!userLocation) {
+                showToast('Obteniendo tu ubicación...');
+                navigator.geolocation.getCurrentPosition(
+                    function(position) {
+                        userLocation = { lat: position.coords.latitude, lng: position.coords.longitude };
+                        dibujarRuta(userLocation.lat, userLocation.lng, destLat, destLng, destName);
+                    },
+                    function(error) { showToast('⚠️ Activa el GPS para trazar la ruta.'); },
+                    { enableHighAccuracy: true }
+                );
+                return;
+            }
+            dibujarRuta(userLocation.lat, userLocation.lng, destLat, destLng, destName);
+        }
+
+        function dibujarRuta(startLat, startLng, destLat, destLng, destName) {
+            if (routingControl) { map.removeControl(routingControl); }
+            routingControl = L.Routing.control({
+                waypoints: [L.latLng(startLat, startLng), L.latLng(destLat, destLng)],
+                router: L.Routing.osrmv1({ serviceUrl: 'https://router.project-osrm.org/route/v1' }),
+                lineOptions: { styles: [{color: '#0a84ff', weight: 6, opacity: 0.8}] },
+                createMarker: function() { return null; },
+                addWaypoints: false, fitSelectedRoutes: true, show: false
+            }).addTo(map);
+
+            routingControl.on('routesfound', function(e) {
+                var summary = e.routes[0].summary;
+                let distText = summary.totalDistance > 1000 ? (summary.totalDistance / 1000).toFixed(1) + ' km' : Math.round(summary.totalDistance) + ' m';
+                let timeText = Math.round(summary.totalTime / 60) + ' min';
+                document.getElementById('routeDetails').innerHTML = `Hacia <b>${destName}</b><br>Distancia: ${distText} · Tiempo aprox: ${timeText}`;
+                document.getElementById('routeInfoPanel').classList.add('show');
+            });
+        }
+
+        function clearRoute() {
+            if (routingControl) { map.removeControl(routingControl); routingControl = null; }
+            document.getElementById('routeInfoPanel').classList.remove('show');
+        }
+
+        function formatTime(timeStr) {
+            if (!timeStr) return "--:--";
+            const [hour, minute] = timeStr.split(':');
+            let h = parseInt(hour);
+            const ampm = h >= 12 ? 'PM' : 'AM';
+            h = h % 12 || 12;
+            return `${h}:${minute} ${ampm}`;
+        }
+
+        function reportVibe(element) {
+            document.querySelectorAll('.vibe-option').forEach(el => el.classList.remove('selected'));
+            element.classList.add('selected');
+            showToast('¡Gracias! Tu reporte ayuda a otros.');
+        }
+
+        function showToast(message) {
+            const toast = document.getElementById('toast');
+            toast.innerText = message;
+            toast.classList.add('show');
+            setTimeout(() => { toast.classList.remove('show'); }, 3500);
+        }
+
+        // INICIO
+        renderAllCards();
+    </script>
+</body>
+</html>
